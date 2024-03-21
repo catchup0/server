@@ -17,7 +17,6 @@ const User = require('./models');
 
 dotenv.config();
 const pageRouter = require('./routes/page');
-const authRouter = require('./routes/auth');
 // const { sequelize: db } = require('./models');
 // const passportConfig = require('./passport');
 
@@ -177,7 +176,6 @@ const authenticateToken = (req, res, next) => {
   // 전역적으로 토큰 검증 미들웨어 적용
   app.use(authenticateToken);
 
-app.use('/auth', authRouter);
 app.use(passport.initialize());
 app.use(passport.session());
 
