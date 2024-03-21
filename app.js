@@ -12,14 +12,14 @@ const helmet = require('helmet');
 const hpp = require('hpp');
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcrypt');
-const User = require('../models');
+const User = require('./models');
 
 
 dotenv.config();
 const pageRouter = require('./routes/page');
 const authRouter = require('./routes/auth');
-const { sequelize: db } = require('./models');
-const passportConfig = require('./passport');
+// const { sequelize: db } = require('./models');
+// const passportConfig = require('./passport');
 
 const app = express();
 //passportConfig(); // 패스포트 설정
