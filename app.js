@@ -216,6 +216,28 @@ app.post('/signup', async (req, res) => {
   }
 });
 
+// 회원탈퇴 엔드포인트
+app.post('/deleteAccount', async (req, res) => {
+  const userId = req.body.userId;
+
+  if (!userId) {
+    return res.status(400).send({ error: true, message: '아이디 제공 요청' });
+  }
+
+  const deleteQuery = 'DELETE FROM users WHERE id = ?';
+
+  pool.query(deleteQuery , [userId],(err, results) => {
+    if (err) {
+      console.error('DB 쿼리 실행 중 오류 발생:', err);
+      return res.status(500).send('삭제하는데 오류 생김');
+    }
+    res.status(200).json({ success: true, message: '정상적으로 삭제됨', guides: results });
+  }
+);
+
+
+});
+
 
 // 로그인 엔드포인트
 app.post('/login', async (req, res) => {
