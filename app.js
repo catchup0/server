@@ -433,6 +433,89 @@ app.post('/updateFavorite', guideUpload.array('files'), (req, res) => {
   }
 });
 
+// 공개 비공개 여부 데이터베이스 저장 및 삭제
+app.post('/updatePrivacySetting', guideUpload.array('files'), (req, res) => {
+  const guideId = req.body.id;
+  const appName = decodeURIComponent(req.body.appName);
+  const guideName = decodeURIComponent(req.body.guideName);
+  const userId = req.body.userId;
+  const isPrivacySetting = req.body.isPrivacySetting;
+  const logoUrl = `${req.protocol}://${req.get('host')}/logos/${appName}.jpg`;
+
+  if(isPrivacySetting === "public"){
+    const query = 'UPDATE guideList SET privacySetting = ? WHERE id = ? AND userId = ?';
+    pool.query(query, [isPrivacySetting, guideId, userId], (err, result) => {
+      if (err) {
+          console.error('DB 쿼리 실행 중 오류 발생:', err);
+          return res.status(500).send('DB 쿼리 실행 중 오류 발생');
+      }
+      // 성공적으로 파일을 저장하고 데이터베이스에 정보를 저장했을 때 응답을 보냅니다.
+      res.status(200).json({ success: true, message: '공개 여부 데이터베이스 업데이트 성공'});
+   });
+  }else if(isPrivacySetting === "private"){
+    const query = 'UPDATE guideList SET privacySetting = ? WHERE id = ? AND userId = ?';
+    pool.query(query, [isPrivacySetting, guideId, userId], (err, result) => {
+      if (err) {
+          console.error('DB 쿼리 실행 중 오류 발생:', err);
+          return res.status(500).send('DB 쿼리 실행 중 오류 발생');
+      }
+      // 성공적으로 파일을 저장하고 데이터베이스에 정보를 저장했을 때 응답을 보냅니다.
+      res.status(200).json({ success: true, message: '비공개 여부 데이터베이스 업데이트 성공'});
+   });
+  }
+});
+
+
+// 즐겨찾기 리스트 출력
+app.get('/favoriteGuideList', (req, res) => {
+  const userId = req.query.userId; // 사용자 ID도 쿼리 파라미터로 받습니다.
+  if (!userId) {
+    return res.status(400).json({ error: 'userId parameter is required' });
+  }
+  // guideList와 favoriteGuideList를 결합하여 쿼리 실행
+  const query = `
+    SELECT * FROM favoriteGuideList WHERE userId = ?;
+  `;
+  pool.query(query , [userId],(err, results) => {
+      if (err) {
+        console.error('DB 쿼리 실행 중 오류 발생:', err);
+        return res.status(500).send('Server error');
+      }
+      // 결과가 비어있지 않은 경우, 가이드 리스트 정보 전송
+      if (results.length > 0) {
+        res.status(200).json({ success: true, message: '가이드 리스트 존재', guides: results });
+      } else {
+        res.status(404).json({ success: false, message: '가이드 리스트가 존재하지 않음' });
+      }
+    }
+  );
+});
+
+// 즐겨찾기 리스트 출력
+app.get('/myGuideList', (req, res) => {
+  const userId = req.query.userId; // 사용자 ID도 쿼리 파라미터로 받습니다.
+  if (!userId) {
+    return res.status(400).json({ error: 'userId parameter is required' });
+  }
+  // guideList와 favoriteGuideList를 결합하여 쿼리 실행
+  const query = `
+    SELECT * FROM guideList WHERE userId = ?;
+  `;
+  pool.query(query , [userId],(err, results) => {
+      if (err) {
+        console.error('DB 쿼리 실행 중 오류 발생:', err);
+        return res.status(500).send('Server error');
+      }
+      // 결과가 비어있지 않은 경우, 가이드 리스트 정보 전송
+      if (results.length > 0) {
+        res.status(200).json({ success: true, message: '가이드 리스트 존재', guides: results });
+      } else {
+        res.status(404).json({ success: false, message: '가이드 리스트가 존재하지 않음' });
+      }
+    }
+  );
+});
+
 // JWT 토큰 검증 미들웨어
 const authenticateToken = (req, res, next) => {
     const authHeader = req.headers['authorization'];
