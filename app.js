@@ -12,6 +12,7 @@ const hpp = require('hpp');
 const mysql = require('mysql');
 const bcrypt = require('bcrypt');
 const multer = require('multer');
+const archiver = require('archiver');
 const fs = require('fs');
 
 dotenv.config();
