@@ -432,6 +432,8 @@ app.post('/updateFavorite', guideUpload.array('files'), (req, res) => {
   const isFavorite = req.body.isFavorite;
   const logoUrl = `${req.protocol}://${req.get('host')}/logos/${appName}.jpg`;
 
+  console.log(userId)
+
   if(isFavorite === 'true'){
     const insertQuery = 'INSERT INTO favoriteGuideList (guideId, guideName, appName, userId, logoPath) VALUES (?, ?, ?, ?, ?)';
     pool.query(insertQuery, [guideId, guideName, appName, userId, logoUrl], (err, result) => {
@@ -537,6 +539,32 @@ app.get('/myGuideList', (req, res) => {
     }
   );
 });
+
+app.post('/downloadFolder', (req, res) => {
+  const foldername = req.body.foldername;
+  const folderPath = path.join(__dirname, 'guide', foldername);
+
+  if (fs.existsSync(folderPath) && fs.lstatSync(folderPath).isDirectory()) {
+      res.setHeader('Content-Type', 'application/zip');
+      res.setHeader('Content-Disposition', `attachment; filename=${foldername}.zip`);
+
+      const archive = archiver('zip', {
+          zlib: { level: 9 }
+      });
+
+      archive.on('error', (err) => {
+          throw err;
+      });
+
+      archive.pipe(res);
+
+      archive.directory(folderPath, false);
+      archive.finalize();
+  } else {
+      res.status(404).send('Folder not found');
+  }
+});
+
 
 // JWT 토큰 검증 미들웨어
 const authenticateToken = (req, res, next) => {
