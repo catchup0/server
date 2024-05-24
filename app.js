@@ -555,7 +555,10 @@ app.post('/downloadFolder', (req, res) => {
 
   if (fs.existsSync(folderPath) && fs.lstatSync(folderPath).isDirectory()) {
       res.setHeader('Content-Type', 'application/zip');
-      res.setHeader('Content-Disposition', `attachment; filename=${foldername}.zip`);
+      
+      // 파일 이름을 안전하게 인코딩하여 설정
+      const encodedFilename = encodeURIComponent(`${foldername}.zip`);
+      res.setHeader('Content-Disposition', `attachment; filename*=UTF-8''${encodedFilename}`);
 
       const archive = archiver('zip', {
           zlib: { level: 9 }
