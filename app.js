@@ -542,6 +542,15 @@ app.get('/myGuideList', (req, res) => {
 
 app.post('/downloadFolder', (req, res) => {
   const foldername = req.body.foldername;
+
+  // 디버깅을 위한 로그 추가
+  console.log('Received foldername:', foldername);
+
+  // foldername이 정의되지 않았을 경우에 대한 처리
+  if (!foldername) {
+      return res.status(400).send('foldername is required');
+  }
+
   const folderPath = path.join(__dirname, 'guide', foldername);
 
   if (fs.existsSync(folderPath) && fs.lstatSync(folderPath).isDirectory()) {
