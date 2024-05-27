@@ -14,6 +14,7 @@ const bcrypt = require('bcrypt');
 const multer = require('multer');
 const archiver = require('archiver');
 const fs = require('fs');
+const querystring = require('querystring');
 
 dotenv.config();
 
@@ -85,6 +86,20 @@ app.use(helmet({
   crossOriginEmbedderPolicy: false
 }));
 
+// 이미지 파일을 제공하는 정적 디렉토리 설정
+app.use('/postImage', (req, res, next) => {
+    const decodedPath = decodeURIComponent(req.path.slice(1)); // URL 디코딩 (첫 슬래시 제거)
+    const filePath = path.join(__dirname, 'postImage', decodedPath);
+
+    // 파일이 존재하는지 확인하고 제공
+    res.sendFile(filePath, (err) => {
+        if (err) {
+            console.error(err);
+            res.status(err.status || 500).end();
+        }
+    });
+});
+
 // MySQL 연결 설정
 const pool = mysql.createPool({
   host: process.env.DB_HOST, // 데이터베이스 서버의 주소
@@ -140,6 +155,16 @@ const guideStorage = multer.diskStorage({
   }
 });
 
+const postStorage = multer.diskStorage({
+  destination: (req, file, cb) => {
+      cb(null, 'postImage');
+  },
+  filename: (req, file, cb) => {
+    const decodedOriginalName = decodeURIComponent(file.originalname);
+    cb(null, decodedOriginalName);
+  }
+});
+
 const upload = multer({ 
   storage: storage,
   limits: {
@@ -148,6 +173,8 @@ const upload = multer({
 });
 
 const guideUpload = multer({ storage: guideStorage });
+
+const postUpload = multer({ storage: postStorage });
 
 // 중복 확인 엔드포인트
 app.post('/checkDuplicate', (req, res) => {
@@ -576,6 +603,190 @@ app.post('/downloadFolder', (req, res) => {
   } else {
       res.status(404).send('Folder not found');
   }
+});
+
+// 게시글 업로드 엔드포인트
+app.post('/uploadPost', postUpload.array('uploaded_files', 10), (req, res) => { // Multer 미들웨어 추가
+  try {
+    // 디코딩된 데이터 추출
+    const title = decodeURIComponent(req.body.title);
+    const author = decodeURIComponent(req.body.author);
+    const content = decodeURIComponent(req.body.content);
+
+    // 파일이 없는 경우 처리
+    if (!req.files) {
+      return res.status(400).json({ success: false, message: 'No files were uploaded.' });
+    }
+    
+    const images = req.files.map(file => decodeURIComponent(file.filename)); // 파일 이름 디코딩
+    const imageCount = images.length;
+
+    // 이미지를 JSON 문자열로 변환
+    const imagesJson = JSON.stringify(images);
+
+    const query = `INSERT INTO postList (title, author, content, imageCount, imagePath) VALUES (?, ?, ?, ?, ?)`;
+    const values = [title, author, content, imageCount, imagesJson];
+
+    pool.query(query, values, (err, results) => {
+      if (err) {
+          console.error(err);
+          return res.status(500).json({ success: false, message: '게시글 등록 실패' });
+      }
+
+      // 게시글 등록 성공 후 전체 postList 데이터 조회
+      pool.query('SELECT * FROM postList', (err, results) => {
+          if (err) {
+              console.error(err);
+              return res.status(500).json({ success: false, message: '데이터 조회 실패' });
+          }
+
+          // 전체 데이터를 JSON 형식으로 전송
+          res.status(200).json({ success: true, message: '게시글 등록 성공', posts: results });
+      });
+    });
+  } catch (err) {
+      console.error(err);
+      return res.status(500).json({ success: false, message: '서버 에러' });
+  }
+});
+
+// 게시글 목록을 가져오는 엔드포인트
+app.get('/fetchPostList', (req, res) => {
+  const query = 'SELECT * FROM postList';
+
+  pool.query(query, (err, results) => {
+    if (err) {
+      console.error('Database query error:', err);
+      return res.status(500).json({ success: false, message: 'Failed to fetch posts' });
+    }
+
+    res.status(200).json(results);
+  });
+});
+
+// GET 요청으로 댓글 추가
+app.get('/addComment', (req, res) => {
+  const { postId, author, content } = req.query;
+
+  if (!postId || !author || !content) {
+    return res.status(400).json({ success: false, message: 'All fields are required' });
+  }
+
+  const query = 'INSERT INTO comments (postId, author, content) VALUES (?, ?, ?)';
+  pool.query(query, [postId, author, content], (err, results) => {
+    if (err) {
+      console.error(err);
+      return res.status(500).json({ success: false, message: '댓글 추가 실패' });
+    }
+    res.status(200).json({ success: true, message: '댓글 추가 성공' });
+  });
+});
+
+
+// 댓글 가져오기
+app.get('/getComments', (req, res) => {
+  const postId = req.query.postId;
+  const query = 'SELECT * FROM comments WHERE postId = ? ORDER BY createdAt';
+  pool.query(query, [postId], (err, results) => {
+      if (err) {
+          console.error(err);
+          return res.status(500).json({ success: false, message: '댓글 가져오기 실패' });
+      }
+      res.status(200).json({ success: true, comments: results });
+  });
+});
+
+// 삭제 요청을 처리하는 라우트
+app.get('/deletePost', (req, res) => {
+  const postId = req.query.postId;
+
+  if (!postId) {
+    return res.status(400).json({ success: false, message: 'Post ID is required' });
+  }
+
+  pool.getConnection((err, connection) => {
+    if (err) {
+      console.error(err);
+      return res.status(500).json({ success: false, message: 'Failed to connect to database' });
+    }
+
+    connection.beginTransaction(err => {
+      if (err) {
+        connection.release();
+        console.error(err);
+        return res.status(500).json({ success: false, message: 'Failed to start transaction' });
+      }
+
+      const getPostInfoQuery = 'SELECT title, author FROM postList WHERE id = ?';
+      const deleteCommentsQuery = 'DELETE FROM comments WHERE postId = ?';
+      const deletePostQuery = 'DELETE FROM postList WHERE id = ?';
+
+      connection.query(getPostInfoQuery, [postId], (err, results) => {
+        if (err || results.length === 0) {
+          return connection.rollback(() => {
+            connection.release();
+            console.error(err || 'No post found');
+            return res.status(500).json({ success: false, message: 'Failed to get post info' });
+          });
+        }
+
+        const { title, author } = results[0];
+        const searchPattern = `${title}-${author}`;
+
+        connection.query(deleteCommentsQuery, [postId], (err, results) => {
+          if (err) {
+            return connection.rollback(() => {
+              connection.release();
+              console.error(err);
+              return res.status(500).json({ success: false, message: 'Failed to delete comments' });
+            });
+          }
+
+          connection.query(deletePostQuery, [postId], (err, results) => {
+            if (err) {
+              return connection.rollback(() => {
+                connection.release();
+                console.error(err);
+                return res.status(500).json({ success: false, message: 'Failed to delete post' });
+              });
+            }
+
+            const imageDirectory = path.join(__dirname, 'postImage');
+            fs.readdir(imageDirectory, (err, files) => {
+              if (err) {
+                return connection.rollback(() => {
+                  connection.release();
+                  console.error(err);
+                  return res.status(500).json({ success: false, message: 'Failed to read image directory' });
+                });
+              }
+
+              files.forEach(file => {
+                if (file.includes(searchPattern)) {
+                  const filePath = path.join(imageDirectory, file);
+                  fs.unlink(filePath, err => {
+                    if (err) console.error(`Failed to delete file ${filePath}:`, err);
+                  });
+                }
+              });
+
+              connection.commit(err => {
+                connection.release();
+                if (err) {
+                  return connection.rollback(() => {
+                    console.error(err);
+                    return res.status(500).json({ success: false, message: 'Failed to commit transaction' });
+                  });
+                }
+
+                res.status(200).json({ success: true, message: '삭제 성공' });
+              });
+            });
+          });
+        });
+      });
+    });
+  });
 });
 
 
