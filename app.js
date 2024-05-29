@@ -420,36 +420,38 @@ app.post('/uploadGuide', guideUpload.array('files'), (req, res) => {
 // 앱 가이드 리스트를 가져오는 API
 app.get('/appGuideList', (req, res) => {
   const appName = req.query.appName; // 쿼리 파라미터에서 앱 이름 추출
-  const userId = req.query.userId; // 사용자 ID도 쿼리 파라미터로 받습니다.
+  const favoriteUserId = req.query.favoriteUserId; // 사용자 ID도 쿼리 파라미터로 받습니다.
   if (!appName) {
     return res.status(400).json({ error: 'appName parameter is required' });
   }
-  if (!userId) {
-    return res.status(400).json({ error: 'userId parameter is required' });
+  if (!favoriteUserId) { // userId를 favoriteUserId로 변경
+    return res.status(400).json({ error: 'favoriteUserId parameter is required' });
   }
+  
   // guideList와 favoriteGuideList를 결합하여 쿼리 실행
   const query = `
     SELECT g.*, 
-    CASE WHEN f.userId IS NOT NULL THEN true ELSE false END AS isFavorite
+    CASE WHEN f.favoriteUserId IS NOT NULL THEN true ELSE false END AS isFavorite
     FROM guideList g
-    LEFT JOIN favoriteGuideList f ON g.id = f.guideId AND f.userId = ?
+    LEFT JOIN favoriteGuideList f ON g.id = f.guideId AND f.favoriteUserId = ?
     WHERE g.appName = ? AND g.privacySetting = 'public';
   `;
 
-  pool.query(query , [userId, appName],(err, results) => {
-      if (err) {
-        console.error('DB 쿼리 실행 중 오류 발생:', err);
-        return res.status(500).send('Server error');
-      }
-      // 결과가 비어있지 않은 경우, 가이드 리스트 정보 전송
-      if (results.length > 0) {
-        res.status(200).json({ success: true, message: '가이드 리스트 존재', guides: results });
-      } else {
-        res.status(404).json({ success: false, message: '가이드 리스트가 존재하지 않음' });
-      }
+  pool.query(query, [favoriteUserId, appName], (err, results) => {
+    if (err) {
+      console.error('DB 쿼리 실행 중 오류 발생:', err);
+      return res.status(500).send('Server error');
     }
-  );
+    
+    // 결과가 비어있지 않은 경우, 가이드 리스트 정보 전송
+    if (results.length > 0) {
+      res.status(200).json({ success: true, message: '가이드 리스트 존재', guides: results });
+    } else {
+      res.status(404).json({ success: false, message: '가이드 리스트가 존재하지 않음' });
+    }
+  });
 });
+
 
 // 즐겨찾기 목록 데이터베이스 저장 및 삭제
 app.post('/updateFavorite', guideUpload.array('files'), (req, res) => {
@@ -457,14 +459,15 @@ app.post('/updateFavorite', guideUpload.array('files'), (req, res) => {
   const appName = decodeURIComponent(req.body.appName);
   const guideName = decodeURIComponent(req.body.guideName);
   const userId = req.body.userId;
+  const favoriteUserId = req.body.favoriteUserId;
   const isFavorite = req.body.isFavorite;
   const logoUrl = `${req.protocol}://${req.get('host')}/logos/${appName}.jpg`;
 
-  console.log(userId)
+  console.log(favoriteUserId)
 
   if(isFavorite === 'true'){
-    const insertQuery = 'INSERT INTO favoriteGuideList (guideId, guideName, appName, userId, logoPath) VALUES (?, ?, ?, ?, ?)';
-    pool.query(insertQuery, [guideId, guideName, appName, userId, logoUrl], (err, result) => {
+    const insertQuery = 'INSERT INTO favoriteGuideList (guideId, guideName, appName, userId, favoriteUserId, logoPath) VALUES (?, ?, ?, ?, ?, ?)';
+    pool.query(insertQuery, [guideId, guideName, appName, userId, favoriteUserId, logoUrl], (err, result) => {
       if (err) {
           console.error('DB 쿼리 실행 중 오류 발생:', err);
           return res.status(500).send('DB 쿼리 실행 중 오류 발생');
@@ -473,8 +476,8 @@ app.post('/updateFavorite', guideUpload.array('files'), (req, res) => {
       res.status(200).json({ success: true, message: '즐겨찾기 데이터베이스 추가 성공'});
    });
   }else{
-    const deleteQuery = 'DELETE FROM favoriteGuideList WHERE guideId = ? AND userId = ?';
-    pool.query(deleteQuery, [guideId, userId], (err, result) => {
+    const deleteQuery = 'DELETE FROM favoriteGuideList WHERE guideId = ? AND favoriteUserId = ?';
+    pool.query(deleteQuery, [guideId, favoriteUserId], (err, result) => {
       if (err) {
           console.error('DB 쿼리 실행 중 오류 발생:', err);
           return res.status(500).send('DB 쿼리 실행 중 오류 발생');
@@ -520,30 +523,32 @@ app.post('/updatePrivacySetting', guideUpload.array('files'), (req, res) => {
 
 // 즐겨찾기 리스트 출력
 app.get('/favoriteGuideList', (req, res) => {
-  const userId = req.query.userId; // 사용자 ID도 쿼리 파라미터로 받습니다.
-  if (!userId) {
-    return res.status(400).json({ error: 'userId parameter is required' });
+  const favoriteUserId = req.query.favoriteUserId; // 사용자 ID를 쿼리 파라미터로 받습니다.
+  if (!favoriteUserId) {
+    return res.status(400).json({ error: 'favoriteUserId parameter is required' });
   }
+
   // guideList와 favoriteGuideList를 결합하여 쿼리 실행
   const query = `
-    SELECT * FROM favoriteGuideList WHERE userId = ?;
+    SELECT * FROM favoriteGuideList WHERE favoriteUserId = ?;
   `;
-  pool.query(query , [userId],(err, results) => {
-      if (err) {
-        console.error('DB 쿼리 실행 중 오류 발생:', err);
-        return res.status(500).send('Server error');
-      }
-      // 결과가 비어있지 않은 경우, 가이드 리스트 정보 전송
-      if (results.length > 0) {
-        res.status(200).json({ success: true, message: '가이드 리스트 존재', guides: results });
-      } else {
-        res.status(404).json({ success: false, message: '가이드 리스트가 존재하지 않음' });
-      }
+  pool.query(query, [favoriteUserId], (err, results) => {
+    if (err) {
+      console.error('DB 쿼리 실행 중 오류 발생:', err);
+      return res.status(500).send('Server error');
     }
-  );
+    
+    // 결과가 비어있지 않은 경우, 가이드 리스트 정보 전송
+    if (results.length > 0) {
+      res.status(200).json({ success: true, message: '가이드 리스트 존재', guides: results });
+    } else {
+      res.status(404).json({ success: false, message: '가이드 리스트가 존재하지 않음' });
+    }
+  });
 });
 
-// 즐겨찾기 리스트 출력
+
+// 내가 만든 리스트 출력
 app.get('/myGuideList', (req, res) => {
   const userId = req.query.userId; // 사용자 ID도 쿼리 파라미터로 받습니다.
   if (!userId) {
